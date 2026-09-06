@@ -47,7 +47,7 @@ Add this to your MCP client's `mcpServers` configuration (Claude Desktop `claude
 - Data comes from **12306's own public query endpoints** (`kyfw.12306.cn/otn/leftTicket/...`) — read-only queries only; **this server cannot book tickets**, please buy via the official 12306 app/website.
 - Station code table cached locally for 7 days; ticket queries cached for **300 seconds**.
 - No API key, no login required.
-- The hosted endpoint is rate-limited to **60 requests / minute / IP**.
+- The hosted endpoint is rate-limited to **200 requests / minute / IP**.
 
 ## 🐢 Self-hosting
 
@@ -71,12 +71,66 @@ No API keys or accounts are ever required.
 ## 🗂️ Files
 
 - `train_mcp_server.py` — the MCP server (FastMCP, Streamable HTTP transport).
-- `rate_limit.py` — lightweight per-IP sliding-window rate-limit middleware (60 req/min default).
+- `rate_limit.py` — lightweight per-IP sliding-window rate-limit middleware (200 req/min default).
 - `requirements.txt` — `mcp`, `uvicorn`, `starlette`.
 - `server.json` — official MCP Registry manifest (remote server entry, ready to publish with `mcp-publisher`).
 - `smithery.yaml` / `glama.json` — directory listing metadata.
 
 ---
+
+## 🧯 Parameter guide & common errors (read this if a call fails)
+
+**`query_train_tickets(from_city, to_city, date="")`**
+
+| Parameter | What to pass | Notes |
+|---|---|---|
+| `from_city` / `to_city` | **Chinese station or city names**, e.g. `"青岛"`, `"北京"`, `"上海虹桥"` | A city name works when the city has one main station; for multi-station cities use the exact station name. Not sure? Call `search_station("北京")` first — it returns 北京/北京南/北京西/北京北… |
+| `date` | `YYYY-MM-DD`, e.g. `"2026-09-20"` | Optional — **defaults to tomorrow** when empty. 12306's pre-sale window is **15 days** (dates further out return an error or empty results). |
+
+**Why you may get an HTTP 400 / error result:**
+
+1. **Bad date format** — must be exactly `YYYY-MM-DD` (`2026/09/20`, `2026年9月20日`, `Sep 20` all fail).
+2. **Station name not found** — typo, pinyin (`"qingdao"`), or a vague nickname the code table doesn't contain. Fix: call `search_station` with a keyword and copy the exact name.
+3. **City-level name for a multi-station city** — e.g. `"北京"` usually resolves to 北京 station, but if you want a specific station pass `"北京南"` / `"北京西"` explicitly.
+4. **Date outside the 15-day pre-sale window** — 12306 has not released those tickets yet.
+
+**Correct call examples:**
+
+```
+query_train_tickets(from_city="青岛", to_city="北京", date="2026-09-20")
+query_train_tickets(from_city="北京南", to_city="上海虹桥")        # date omitted -> tomorrow
+search_station(keyword="上海")                                   # -> 上海/上海南/上海虹桥/上海西…
+```
+
+A successful response returns `车次总数` plus a `车次` list (train number, departure/arrival station & time, duration, and remaining seats per class). An unrecognized station returns `{"error": "出发站「…」无法识别，可用 search_station 工具查车站名"}` — simply re-call with the exact name.
+
+---
+
+## 🧯 参数说明与常见错误（调用失败先看这里）
+
+**`query_train_tickets(from_city, to_city, date="")` 参数说明**
+
+| 参数 | 填什么 | 注意 |
+|---|---|---|
+| `from_city` / `to_city` | **中文车站名或城市名**，如 `"青岛"`、`"北京"`、`"上海虹桥"` | 城市只有一个主车站时填城市名即可；多车站城市建议填具体车站名。不确定时先调 `search_station("北京")`，会返回 北京/北京南/北京西/北京北 等准确站名 |
+| `date` | `YYYY-MM-DD` 格式，如 `"2026-09-20"` | 可留空，**留空默认查明天**；12306 预售期通常为 **15 天**，超出预售期的日期会查询失败或无结果 |
+
+**返回 400 / 错误结果的常见原因：**
+
+1. **日期格式错误**：必须严格为 `YYYY-MM-DD`，`2026/09/20`、`2026年9月20日`、`Sep 20` 等写法都会失败；
+2. **站名不存在**：错别字、拼音（如 `"qingdao"`）、或码表中没有的俗称都会无法识别。解决方法：先用 `search_station` 关键词搜索，复制返回的准确站名；
+3. **多车站城市用了城市通称**：如 `"北京"` 一般能匹配到「北京」站，但要去特定车站请明确传 `"北京南"`、`"北京西"` 等；
+4. **日期超出 15 天预售期**：12306 尚未放票，查询会返回失败提示。
+
+**正确调用示例：**
+
+```
+query_train_tickets(from_city="青岛", to_city="北京", date="2026-09-20")
+query_train_tickets(from_city="北京南", to_city="上海虹桥")        # date 留空 -> 默认明天
+search_station(keyword="上海")                                   # 返回 上海/上海南/上海虹桥/上海西…
+```
+
+调用成功会返回 `车次总数` 和 `车次` 列表（车次号、出发/到达站与时间、历时、各席别余票）；站名无法识别时返回 `{"error": "出发站「…」无法识别，可用 search_station 工具查车站名"}`，换成准确站名重试即可。
 
 ## 🇨🇳 中文使用说明
 
@@ -103,7 +157,7 @@ No API keys or accounts are ever required.
 - `search_station(keyword)`：不确定城市有哪些车站时模糊搜索站名（如「北京」返回 北京/北京南/北京西/北京北 等）。
 - 仅查票，不能购票；12306 预售期通常 15 天。
 
-**服务特性**：数据源全部为公开接口、无需注册/付费；服务端内存缓存、失败自动降级/切换备用通道；单 IP 限流 60 次/分钟。
+**服务特性**：数据源全部为公开接口、无需注册/付费；服务端内存缓存、失败自动降级/切换备用通道；单 IP 限流 200 次/分钟。
 
 **本地部署**：
 
