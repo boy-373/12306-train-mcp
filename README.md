@@ -65,6 +65,19 @@ python train_mcp_server.py
 Then point your MCP client at `http://127.0.0.1:8003/mcp`.
 No API keys or accounts are ever required.
 
+### 🐳 Self-host with Docker
+
+```bash
+git clone https://github.com/boy-373/12306-train-mcp.git
+cd 12306-train-mcp
+docker build -t 12306-train-mcp .
+docker run -d -p 8000:8000 --name 12306-train-mcp 12306-train-mcp
+```
+
+Then point your MCP client at `http://127.0.0.1:8000/mcp`.
+The container listens on `0.0.0.0:8000` by default (override with `-e MCP_PORT=9000` and adjust `-p` accordingly). No API keys or accounts required.
+
+
 
 - `train_stations.json` — bundled 12306 station name → telegraph-code table (auto-refreshed from 12306 every 7 days).
 
@@ -168,6 +181,18 @@ pip install -r requirements.txt
 python train_mcp_server.py
 # 默认监听 127.0.0.1:8003，可用环境变量 MCP_HOST / MCP_PORT / MCP_ALLOWED_HOSTS / MCP_ALLOWED_ORIGINS 覆盖
 ```
+
+
+**Docker 自托管**：
+
+```bash
+git clone https://github.com/boy-373/12306-train-mcp.git && cd 12306-train-mcp
+docker build -t 12306-train-mcp .
+docker run -d -p 8000:8000 --name 12306-train-mcp 12306-train-mcp
+# MCP 地址填：http://127.0.0.1:8000/mcp
+```
+
+容器默认监听 `0.0.0.0:8000`（可用 `-e MCP_PORT=端口` 改），无需任何 API Key 或账号。
 
 ## 📄 License
 
